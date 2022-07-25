@@ -6,13 +6,14 @@ const {
     addCustomer,
     updateCustomer
 } = require('../controllers/customersController')
+const {protect} = require('../middleware/authMiddleware')
 
 router.route('/')
-    .get(getCustomers)
-    .post(addCustomer)
+    .get(protect, getCustomers)
+    .post(protect, addCustomer)
 
 router.route('/code/:code')
-    .get(getCustomerByCode)
-    .put(updateCustomer)
+    .get(protect, getCustomerByCode)
+    .put(protect, updateCustomer)
 
 module.exports = router

@@ -9,7 +9,11 @@ const orgId = process.env.organization_id.toString();
 // @desc Get articles/items for given organization id
 // @route GET /items
 const getItems = async (req, res) => {
-    const authToken = await getAuthToken()
+    const {mm_username, mm_password} = req
+    console.log(mm_username)
+    console.log(mm_password)
+    const authToken = await getAuthToken(mm_username, mm_password)
+    if(authToken.statusCode) return res.status(authToken.statusCode).json(authToken)
     const response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/items`, authToken)
     return res.status(response.statusCode).json(response)
 }
@@ -18,7 +22,9 @@ const getItems = async (req, res) => {
 // @route GET /items/code/:code
 const getItemByCode = async (req, res) => {
     const {code} = req.params
-    const authToken = await getAuthToken()
+    const {mm_username, mm_password} = req
+    const authToken = await getAuthToken(mm_username, mm_password)
+    if(authToken.statusCode) return res.status(authToken.statusCode).json(authToken)
     const response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/items/code(${code})`, authToken)
     return res.status(response.statusCode).json(response)
 }
@@ -42,7 +48,9 @@ const addItem = async (req, res) => {
     }
 
     const date = getFormatedDate()
-    const authToken = await getAuthToken()
+    const {mm_username, mm_password} = req
+    const authToken = await getAuthToken(mm_username, mm_password)
+    if(authToken.statusCode) return res.status(authToken.statusCode).json(authToken)
 
     // Connected ID's
     let {countryCode, currencyCode} = req.body
@@ -51,15 +59,15 @@ const addItem = async (req, res) => {
     currencyCode = currencyCode ? currencyCode : "EUR"
     vatRateCode = item.VatRateCode ? VatRateCode : "S"
     // Country data
-    response = await apiGet(`${apiBaseUrl}api/orgs/${orgId}/countries/code(${countryCode})`, authToken)
+    response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/countries/code(${countryCode})`, authToken)
     if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
     const country = response.data
     // VatRate data
-    response = await apiGet(`${apiBaseUrl}api/orgs/${orgId}/vatrates/code(${vatRateCode})?date=${date}&countryID=${country.CountryId}`, authToken)
+    response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/vatrates/code(${vatRateCode})?date=${date}&countryID=${country.CountryId}`, authToken)
     if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
     const vatRate = response.data
     // Currency data
-    response = await apiGet(`${apiBaseUrl}api/orgs/${orgId}/currencies/code(${currencyCode})`, authToken)
+    response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/currencies/code(${currencyCode})`, authToken)
     if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
     const currency = response.data
 
@@ -78,7 +86,7 @@ const addItem = async (req, res) => {
         }
     }
 
-    response = await apiPost(`${apiBaseUrl}api/orgs/${orgId}/items`, authToken, newItem)
+    response = await apiPost(`${apiBaseUrl}/api/orgs/${orgId}/items`, authToken, newItem)
     return res.status(response.statusCode).json(response)
 }
 
@@ -93,7 +101,9 @@ const updateItem = async (req, res) => {
             error: "Missing item in request body."
         }) 
     }
-    const authToken = await getAuthToken()
+    const {mm_username, mm_password} = req
+    const authToken = await getAuthToken(mm_username, mm_password)
+    if(authToken.statusCode) return res.status(authToken.statusCode).json(authToken)
     let response = undefined
     response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/items/code(${code})`, authToken)
     if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
@@ -102,7 +112,7 @@ const updateItem = async (req, res) => {
     for (let [key, value] of Object.entries(item)) {
         mmItem[key] = value
     }
-    response = await apiPut(`${apiBaseUrl}api/orgs/${orgId}/items/${mmItem.ItemId}`, authToken, mmItem)
+    response = await apiPut(`${apiBaseUrl}/api/orgs/${orgId}/items/${mmItem.ItemId}`, authToken, mmItem)
     return res.status(response.statusCode).json(response)
 }
 

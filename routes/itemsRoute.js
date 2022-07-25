@@ -6,13 +6,14 @@ const {
     addItem,
     updateItem
 } = require('../controllers/itemsController')
+const {protect} = require('../middleware/authMiddleware')
 
 router.route('/')
-    .get(getItems)
-    .post(addItem)
+    .get(protect, getItems)
+    .post(protect, addItem)
 
 router.route('/code/:code')
-    .get(getItemByCode)
-    .put(updateItem)
+    .get(protect, getItemByCode)
+    .put(protect, updateItem)
 
 module.exports = router

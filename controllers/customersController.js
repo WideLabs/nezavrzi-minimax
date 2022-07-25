@@ -8,7 +8,8 @@ const orgId = process.env.organization_id.toString()
 // @desc Get all customers for given organization id
 // @route GET /customers
 const getCustomers = async (req, res) => {
-    const authToken = await getAuthToken()
+    const {mm_username, mm_password} = req
+    const authToken = await getAuthToken(mm_username, mm_password)
     const response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/customers`, authToken)
     res.status(response.statusCode).json(response)
 }
@@ -17,7 +18,9 @@ const getCustomers = async (req, res) => {
 // @route GET /customers/code/:code
 const getCustomerByCode = async (req, res) => {
     const {code} = req.params;
-    const authToken = await getAuthToken()
+    const {mm_username, mm_password} = req
+    const authToken = await getAuthToken(mm_username, mm_password)
+    if(authToken.statusCode) return res.status(authToken.statusCode).json(authToken)
     const response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/customers/code(${code})`, authToken)
     res.status(response.statusCode).json(response)
 }
@@ -40,18 +43,20 @@ const addCustomer = async (req, res) => {
         })
     }
 
-    const authToken = await getAuthToken()
+    const {mm_username, mm_password} = req
+    const authToken = await getAuthToken(mm_username, mm_password)
+    if(authToken.statusCode) return res.status(authToken.statusCode).json(authToken)
 
     // Connected ID's
     let response = undefined
     const countryCode = customer.CountryCode ? customer.CountryCode : "SI"
     const currencyCode = "EUR"
     // Country data
-    response = await apiGet(`${apiBaseUrl}api/orgs/${orgId}/countries/code(${countryCode})`, authToken)
+    response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/countries/code(${countryCode})`, authToken)
     if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
     const country = response.data
     // Currency data
-    response = await apiGet(`${apiBaseUrl}api/orgs/${orgId}/currencies/code(${currencyCode})`, authToken)
+    response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/currencies/code(${currencyCode})`, authToken)
     if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
     const currency = response.data
 
@@ -71,7 +76,7 @@ const addCustomer = async (req, res) => {
         },
         EInvoiceIssuing: "SeNePripravlja"
     }
-    response = await apiPost(`${apiBaseUrl}api/orgs/${orgId}/customers`, authToken, newCustomer)
+    response = await apiPost(`${apiBaseUrl}/api/orgs/${orgId}/customers`, authToken, newCustomer)
     return res.status(response.statusCode).json(response)
 }
 
@@ -86,16 +91,18 @@ const updateCustomer = async (req, res) => {
             error: "Missing customer in request body."
         })  
     }
-    const authToken = await getAuthToken()
+    const {mm_username, mm_password} = req
+    const authToken = await getAuthToken(mm_username, mm_password)
+    if(authToken.statusCode) return res.status(authToken.statusCode).json(authToken)
     let response = undefined
-    response = await apiGet(`${apiBaseUrl}api/orgs/${orgId}/customers/code(${code})`, authToken)
+    response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/customers/code(${code})`, authToken)
     if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
     let mmCustomer = response.data
     // Override minimax items properties with values from request body
     for (let [key, value] of Object.entries(customer)) {
         mmCustomer[key] = value
     }
-    response = await apiPut(`${apiBaseUrl}api/orgs/${orgId}/customers/${mmCustomer.CustomerId}`, authToken, mmCustomer)
+    response = await apiPut(`${apiBaseUrl}/api/orgs/${orgId}/customers/${mmCustomer.CustomerId}`, authToken, mmCustomer)
     return res.status(response.statusCode).json(response)
 }
 

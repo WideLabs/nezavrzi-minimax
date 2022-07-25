@@ -43,7 +43,9 @@ const issueInvoice = async(req, res) => {
     }
 
     const date = new Date()
-    const authToken = await getAuthToken()
+    const {mm_username, mm_password} = req
+    const authToken = await getAuthToken(mm_username, mm_password)
+    if(authToken.statusCode) return res.status(authToken.statusCode).json(authToken)
 
     // Connected ID's
     let {countryCode, currencyCode, vatRateCode, IRReportTemplateCode, DOReportTemplateCode} = req.body
@@ -54,28 +56,28 @@ const issueInvoice = async(req, res) => {
     IRReportTemplateCode = IRReportTemplateCode ? IRReportTemplateCode : "IR"
     DOReportTemplateCode = DOReportTemplateCode ? DOReportTemplateCode : "DO"   
     // Country data
-    response = await apiGet(`${apiBaseUrl}api/orgs/${orgId}/countries/code(${countryCode})`, authToken)
+    response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/countries/code(${countryCode})`, authToken)
     if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
     const country = response.data
     // Currency data
-    response = await apiGet(`${apiBaseUrl}api/orgs/${orgId}/currencies/code(${currencyCode})`, authToken)
+    response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/currencies/code(${currencyCode})`, authToken)
     if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
     const currency = response.data
     // Vatrate data
-    response = await apiGet(`${apiBaseUrl}api/orgs/${orgId}/vatrates/code(${vatRateCode})?date=${date}&countryID=${country.CountryId}`, authToken)
+    response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/vatrates/code(${vatRateCode})?date=${date}&countryID=${country.CountryId}`, authToken)
     if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
     const vatRate = response.data
     // IRReport Template data
-    response = await apiGet(`${apiBaseUrl}api/orgs/${orgId}/report-templates?SearchString=${IRReportTemplateCode}&PageSize=100`, authToken)
+    response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/report-templates?SearchString=${IRReportTemplateCode}&PageSize=100`, authToken)
     if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
     const IRReportTemplate = response.data
     // DOReport Template data
-    response = await apiGet(`${apiBaseUrl}api/orgs/${orgId}/report-templates?SearchString=${DOReportTemplateCode}&PageSize=100`, authToken)
+    response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/report-templates?SearchString=${DOReportTemplateCode}&PageSize=100`, authToken)
     if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
     const DOReportTemplate = response.data
 
     // Get customer info by Code
-    response = await apiGet(`${apiBaseUrl}api/orgs/${orgId}/customers/code(${customer.Code})`, authToken)
+    response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/customers/code(${customer.Code})`, authToken)
     let mmCustomer = undefined
 
     if(response.statusCode === httpStatusCodes.NOT_FOUND) {
@@ -104,7 +106,7 @@ const issueInvoice = async(req, res) => {
             EInvoiceIssuing: "SeNePripravlja" //KAJ Z TEM?
         }
         // Create new customer in minimax
-        response = await apiPost(`${apiBaseUrl}api/orgs/${orgId}/customers`, authToken, newCustomer)
+        response = await apiPost(`${apiBaseUrl}/api/orgs/${orgId}/customers`, authToken, newCustomer)
         if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
     }
     else if (response.statusCode !== httpStatusCodes.OK) {
@@ -118,7 +120,7 @@ const issueInvoice = async(req, res) => {
     for (let i = 0; i < items.length; i++) {
         // item => admin page item object, mmItem => minimax item object
         const item = items[i]
-        response = await apiGet(`${apiBaseUrl}api/orgs/${orgId}/items/code(${item.Code})`, authToken)
+        response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/items/code(${item.Code})`, authToken)
         let isNewItem = false
         // Item with that code doesnt exist yet, create new one
         if(response.statusCode === httpStatusCodes.NOT_FOUND) {
@@ -145,7 +147,7 @@ const issueInvoice = async(req, res) => {
                     ID: currency.CurrencyId
                 }
             }
-            response = await apiPost(`${apiBaseUrl}api/orgs/${orgId}/items`, authToken, newItem)
+            response = await apiPost(`${apiBaseUrl}/api/orgs/${orgId}/items`, authToken, newItem)
         }
         if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
         let mmItem = response.data
@@ -155,9 +157,6 @@ const issueInvoice = async(req, res) => {
             let updateNeeded = false
             for (let [key, value] of Object.entries(item)) {
                 if (mmItem[key] && mmItem[key] !== value) {
-                    console.log(key)
-                    console.log(value)
-                    console.log(mmItem[key])
                     mmItem[key] = value
                     updateNeeded = true
                 }
@@ -166,9 +165,9 @@ const issueInvoice = async(req, res) => {
             // If info is not synced update item
             if (updateNeeded) {
                 console.log("Updating item")
-                response = await apiPut(`${apiBaseUrl}api/orgs/${orgId}/items/${mmItem.ItemId}`, authToken, mmItem)
+                response = await apiPut(`${apiBaseUrl}/api/orgs/${orgId}/items/${mmItem.ItemId}`, authToken, mmItem)
                 if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
-                response = await apiGet(`${apiBaseUrl}api/orgs/${orgId}/items/code(${mmItem.Code})`, authToken)
+                response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/items/code(${mmItem.Code})`, authToken)
                 if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
                 mmItem = response.data
             }

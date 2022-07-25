@@ -19,7 +19,7 @@ const apiGet = async (endpoint, authToken) => {
         return {
             statusCode: error.response.status,
             error: error.response.data,
-            path: error.request.path
+            path: process.env.NODE_ENV == "DEV" ? error.request.path : null
         }
     } 
 }
@@ -51,7 +51,7 @@ const apiPost = async (endpoint, authToken, data) => {
         return {
             statusCode: error.response.status,
             error: error.response.data,
-            path: error.request.path
+            ppath: process.env.NODE_ENV == "DEV" ? error.request.path : null
         }
     }
 }
@@ -75,7 +75,7 @@ const apiPut = async (endpoint, authToken, data) => {
         return {
             statusCode: error.response.status,
             error: error.response.data,
-            path: error.request.path
+            path: process.env.NODE_ENV == "DEV" ? error.request.path : null
         }
     }
 }
