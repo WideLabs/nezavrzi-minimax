@@ -1,5 +1,4 @@
 const { apiGet, apiPost, apiPut } = require('../api/callsApi')
-const { getAuthToken } = require('../api/authApi')
 const { apiBaseUrl } = require('../config')
 const httpStatusCodes = require('../utils/httpStatusCodes')
 const { customerMandatoryFieldsCheck } = require('../utils/mandatoryFieldsCheck')
@@ -8,26 +7,33 @@ const orgId = process.env.organization_id.toString()
 // @desc Get all customers for given organization id
 // @route GET /customers
 const getCustomers = async (req, res) => {
-    const {mm_username, mm_password} = req
-    const authToken = await getAuthToken(mm_username, mm_password)
+    const {authToken} = req
     const response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/customers`, authToken)
-    res.status(response.statusCode).json(response)
+    return res.status(response.statusCode).json(response)
+}
+
+// @desc Get specific customer by customer id
+// @route GET /customers/:id
+const getCustomerById = async (req, res) => {
+    const {authToken} = req
+    const {id} = req.params
+    const response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/customers/${id}`, authToken)
+    return res.status(response.statusCode).json(response)
 }
 
 // @desc Get specific customer by unique code
 // @route GET /customers/code/:code
 const getCustomerByCode = async (req, res) => {
+    const {authToken} = req
     const {code} = req.params;
-    const {mm_username, mm_password} = req
-    const authToken = await getAuthToken(mm_username, mm_password)
-    if(authToken.statusCode) return res.status(authToken.statusCode).json(authToken)
     const response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/customers/code(${code})`, authToken)
-    res.status(response.statusCode).json(response)
+    return res.status(response.statusCode).json(response)
 }
 
 // @desc Add new customer
 // @route POST /customers
 const addCustomer = async (req, res) => {
+    const {authToken} = req
     const {customer} = req.body;
     if(!customer) {
         return res.status(httpStatusCodes.BAD_REQUEST).json({
@@ -42,10 +48,6 @@ const addCustomer = async (req, res) => {
             error: `Missing mandatory customer fields {${missingMandatoryFields.toString()}}`
         })
     }
-
-    const {mm_username, mm_password} = req
-    const authToken = await getAuthToken(mm_username, mm_password)
-    if(authToken.statusCode) return res.status(authToken.statusCode).json(authToken)
 
     // Connected ID's
     let response = undefined
@@ -80,9 +82,10 @@ const addCustomer = async (req, res) => {
     return res.status(response.statusCode).json(response)
 }
 
-// @desc Update customer on minimax
+// @desc Update customer on minimax based on Code
 // @route PUT /customers/code/:code
-const updateCustomer = async (req, res) => {
+const updateCustomerByCode = async (req, res) => {
+    const {authToken} = req
     const {code} = req.params
     const customer = req.body
     if (!customer) {
@@ -91,9 +94,6 @@ const updateCustomer = async (req, res) => {
             error: "Missing customer in request body."
         })  
     }
-    const {mm_username, mm_password} = req
-    const authToken = await getAuthToken(mm_username, mm_password)
-    if(authToken.statusCode) return res.status(authToken.statusCode).json(authToken)
     let response = undefined
     response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/customers/code(${code})`, authToken)
     if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
@@ -108,7 +108,8 @@ const updateCustomer = async (req, res) => {
 
 module.exports = {
     getCustomers,
+    getCustomerById,
     getCustomerByCode,
     addCustomer,
-    updateCustomer
+    updateCustomerByCode
 }

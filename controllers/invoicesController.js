@@ -1,13 +1,14 @@
 const { apiGet, apiPost, apiPut } = require('../api/callsApi')
-const { getAuthToken } = require('../api/authApi')
 const httpStatusCodes = require('../utils/httpStatusCodes')
+const paymentMethods = require('../utils/paymentMethods')
 const { apiBaseUrl } = require('../config')
 const { customerMandatoryFieldsCheck, itemMandatoryFieldsCheck } = require('../utils/mandatoryFieldsCheck')
 const orgId = process.env.organization_id.toString()
 
-// @desc issue new invoice
+// @desc Issue new invoice
 // @route POST /invoices
 const issueInvoice = async(req, res) => {
+    const {authToken} = req
     const {customer, items} = req.body
     if(!customer) {
         return res.status(httpStatusCodes.BAD_REQUEST).json({
@@ -43,9 +44,6 @@ const issueInvoice = async(req, res) => {
     }
 
     const date = new Date()
-    const {mm_username, mm_password} = req
-    const authToken = await getAuthToken(mm_username, mm_password)
-    if(authToken.statusCode) return res.status(authToken.statusCode).json(authToken)
 
     // Connected ID's
     let {countryCode, currencyCode, vatRateCode, IRReportTemplateCode, DOReportTemplateCode} = req.body
@@ -96,8 +94,9 @@ const issueInvoice = async(req, res) => {
             PostalCode: customer.PostalCode,
             City: customer.City,
             Country: {
-                ID: country.CountryId //TODO customer.CountryCode, support za customerje iz drugih držav?
+                ID: country.CountryId
             },
+            CountryName: country.Code === "SI" ? null : country.Name,
             SubjectToVAT: customer.SubjectToVAT ? customer.SubjectToVAT : "N",
             VATIdentificationNumber: customer.VATIdentificationNumber ? customer.VATIdentificationNumber : null,
             Currency: {
@@ -108,6 +107,18 @@ const issueInvoice = async(req, res) => {
         // Create new customer in minimax
         response = await apiPost(`${apiBaseUrl}/api/orgs/${orgId}/customers`, authToken, newCustomer)
         if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
+        // Create contact for customer
+        const newContact = {
+            Customer: {
+                ID: newCustomer.CustomerId,
+            },
+            FullName: newCustomer.Name,
+            PhoneNumber: customer.Phone ? customer.Phone : null,
+            Email: customer.Email ? customer.Email : null,
+            Default: "D"
+        }
+        // No important data is returned so no await
+        apiPost(`${apiBaseUrl}/api/orgs/${orgId}/customers/${newCustomer.CustomerId}/contacts`, authToken, newContact)
     }
     else if (response.statusCode !== httpStatusCodes.OK) {
         // something else went wrong with get request
@@ -136,6 +147,7 @@ const issueInvoice = async(req, res) => {
             const newItem = {
                 Code: item.Code,
                 Name: item.Name,
+                Description: item.Description ? item.Description : null,
                 ItemType: item.ItemType ? item.ItemType : "B",
                 StocksManagedOnlyByQuantity: item.StocksManagedOnlyByQuantity ? item.StocksManagedOnlyByQuantity : "N",
                 UnitOfMeasurement: item.UnitOfMeasurement ? item.UnitOfMeasurement : "KOM",
@@ -164,7 +176,6 @@ const issueInvoice = async(req, res) => {
             
             // If info is not synced update item
             if (updateNeeded) {
-                console.log("Updating item")
                 response = await apiPut(`${apiBaseUrl}/api/orgs/${orgId}/items/${mmItem.ItemId}`, authToken, mmItem)
                 if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
                 response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/items/code(${mmItem.Code})`, authToken)
@@ -184,7 +195,7 @@ const issueInvoice = async(req, res) => {
             Description: mmItem.Description,
             Quantity: item.Quantity,
             Price: mmItem.Price,
-            PriceWithVAT: mmItem.Price + (mmItem.Price * (vatRate.Percent / 100)), // Mandatory?
+            PriceWithVAT: mmItem.Price + (mmItem.Price * (vatRate.Percent / 100).toFixed(2)).toFixed(2),
             VATPercent: vatRate.Percent,
             Discount: 0,
             DiscountPercent: 0,
@@ -194,6 +205,12 @@ const issueInvoice = async(req, res) => {
         }
         IssuedInvoiceRows.push(IssuedInvoiceRow)
     }
+
+    /*const IssuedInvoicePaymentMethod = {
+        PaymentMethod: paymentMethods[paymentMethod],
+        Amount: 0.00,
+        AlreadyPaid: "N"
+    }*/
 
     // Generate invoice object
     const invoice = {
@@ -213,12 +230,10 @@ const issueInvoice = async(req, res) => {
         DeliveryNoteReportTemplate: {
             ID: DOReportTemplate.ReportTemplateId
         },
-        //Status: "O", // O => draft, I => issued, 
         PricesOnInvoice: "N", // D => VAT included in price, N => VAT is added to the prices,
         InvoiceType: "R", // R => issued invoice, P => proforma invoice
-        PaymentStatus: "Placan", // Je lahko kdaj neplačan?
-        AssociationWithStock: "N", // Prestavit na yes
-        IssuedInvoiceRows
+        IssuedInvoiceRows,
+        IssuedInvoicePaymentMethod
     }
     response = await apiPost(`${apiBaseUrl}/api/orgs/${orgId}/issuedinvoices`, authToken, invoice)
     if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)

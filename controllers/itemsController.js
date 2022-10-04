@@ -1,5 +1,4 @@
 const { apiGet, apiPost, apiPut } = require('../api/callsApi')
-const { getAuthToken } = require('../api/authApi')
 const { getFormatedDate } = require('../utils/dateUtils')
 const { apiBaseUrl } = require('../config')
 const httpStatusCodes = require('../utils/httpStatusCodes')
@@ -9,22 +8,25 @@ const orgId = process.env.organization_id.toString();
 // @desc Get articles/items for given organization id
 // @route GET /items
 const getItems = async (req, res) => {
-    const {mm_username, mm_password} = req
-    console.log(mm_username)
-    console.log(mm_password)
-    const authToken = await getAuthToken(mm_username, mm_password)
-    if(authToken.statusCode) return res.status(authToken.statusCode).json(authToken)
+    const {authToken} = req
     const response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/items`, authToken)
+    return res.status(response.statusCode).json(response)
+}
+
+// @desc Get specific article/item by Id
+// @route GET /items/:id
+const getItemById = async (req, res) => {
+    const {authToken} = req
+    const {id} = req.params
+    const response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/items/${id}`, authToken)
     return res.status(response.statusCode).json(response)
 }
 
 // @desc Get specific article/item by unique code
 // @route GET /items/code/:code
 const getItemByCode = async (req, res) => {
+    const {authToken} = req
     const {code} = req.params
-    const {mm_username, mm_password} = req
-    const authToken = await getAuthToken(mm_username, mm_password)
-    if(authToken.statusCode) return res.status(authToken.statusCode).json(authToken)
     const response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/items/code(${code})`, authToken)
     return res.status(response.statusCode).json(response)
 }
@@ -32,6 +34,7 @@ const getItemByCode = async (req, res) => {
 // @desc Add new article/item
 // @route POST /items
 const addItem = async (req, res) => {
+    const {authToken} = req
     const {item} = req.body
     if (!item) {
         return res.status(httpStatusCodes.BAD_REQUEST).json({
@@ -48,9 +51,6 @@ const addItem = async (req, res) => {
     }
 
     const date = getFormatedDate()
-    const {mm_username, mm_password} = req
-    const authToken = await getAuthToken(mm_username, mm_password)
-    if(authToken.statusCode) return res.status(authToken.statusCode).json(authToken)
 
     // Connected ID's
     let {countryCode, currencyCode} = req.body
@@ -93,6 +93,7 @@ const addItem = async (req, res) => {
 // @desc Update item on minimax
 // @route PUT /items/code/:code
 const updateItem = async (req, res) => {
+    const {authToken} = req
     const {code} = req.params
     const item = req.body
     if (!item) {
@@ -101,9 +102,6 @@ const updateItem = async (req, res) => {
             error: "Missing item in request body."
         }) 
     }
-    const {mm_username, mm_password} = req
-    const authToken = await getAuthToken(mm_username, mm_password)
-    if(authToken.statusCode) return res.status(authToken.statusCode).json(authToken)
     let response = undefined
     response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/items/code(${code})`, authToken)
     if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
@@ -118,6 +116,7 @@ const updateItem = async (req, res) => {
 
 module.exports = {
     getItems,
+    getItemById,
     getItemByCode,
     addItem,
     updateItem

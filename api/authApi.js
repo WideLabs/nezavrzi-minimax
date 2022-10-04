@@ -1,7 +1,6 @@
 const { authEndpoint } = require("../config")
 const axios = require('axios')
 const httpStatusCodes = require("../utils/httpStatusCodes")
-const { response } = require("express")
 
 const getAuthToken = async (mm_username, mm_password) => {
     const {client_id, client_secret} = process.env
