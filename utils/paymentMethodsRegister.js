@@ -1,4 +1,4 @@
-const paymentMethods = {
+const paymentMethodsRegister = {
     "T": {
         "PaymentMethodId": 304215,
         "Name": "Transakcijski račun",
@@ -34,13 +34,13 @@ const paymentMethods = {
         "Usage": "D",
         "Default": "N"
     },
-            "D": {
-            "PaymentMethodId": 304220,
-            "Name": "Drugo",
-            "Type": "D",
-            "Usage": "D",
-            "Default": "N"
+    "D": {
+        "PaymentMethodId": 304220,
+        "Name": "Drugo",
+        "Type": "D",
+        "Usage": "D",
+        "Default": "N"
     }
 }
 
-module.exports = paymentMethods
+module.exports = paymentMethodsRegister

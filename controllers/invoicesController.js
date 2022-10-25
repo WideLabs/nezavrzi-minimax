@@ -1,6 +1,6 @@
 const { apiGet, apiPost, apiPut } = require('../api/callsApi')
 const httpStatusCodes = require('../utils/httpStatusCodes')
-const paymentMethods = require('../utils/paymentMethods')
+const paymentMethodsRegister = require('../utils/paymentMethodsRegister')
 const { apiBaseUrl } = require('../config')
 const { customerMandatoryFieldsCheck, itemMandatoryFieldsCheck } = require('../utils/mandatoryFieldsCheck')
 const orgId = process.env.organization_id.toString()
@@ -9,7 +9,7 @@ const orgId = process.env.organization_id.toString()
 // @route POST /invoices
 const issueInvoice = async(req, res) => {
     const {authToken} = req
-    const {customer, items} = req.body
+    const {customer, items, paymentMethodInfo} = req.body
     if(!customer) {
         return res.status(httpStatusCodes.BAD_REQUEST).json({
             statusCode: httpStatusCodes.BAD_REQUEST,          
@@ -183,7 +183,9 @@ const issueInvoice = async(req, res) => {
                 mmItem = response.data
             }
         }
-        
+        const itemDDV = parseFloat(Number(mmItem.Price * (vatRate.Percent/100)).toFixed(2))
+        const itemPriceWithVAT = parseFloat(Number(mmItem.Price + itemDDV).toFixed(2));
+        const itemPriceWithVATAndQuantity = (item.Quantity === 1) ? itemPriceWithVAT : parseFloat(Number(itemPriceWithVAT * item.Quantity).toFixed(2)) 
         const IssuedInvoiceRow = {
             RowNumber: i + 1,
             Item: {
@@ -195,8 +197,9 @@ const issueInvoice = async(req, res) => {
             Description: mmItem.Description,
             Quantity: item.Quantity,
             Price: mmItem.Price,
-            PriceWithVAT: mmItem.Price + (mmItem.Price * (vatRate.Percent / 100).toFixed(2)).toFixed(2),
+            PriceWithVAT: itemPriceWithVAT,
             VATPercent: vatRate.Percent,
+            Value: itemPriceWithVATAndQuantity,
             Discount: 0,
             DiscountPercent: 0,
             VatRate: {
@@ -206,11 +209,13 @@ const issueInvoice = async(req, res) => {
         IssuedInvoiceRows.push(IssuedInvoiceRow)
     }
 
-    /*const IssuedInvoicePaymentMethod = {
-        PaymentMethod: paymentMethods[paymentMethod],
-        Amount: 0.00,
-        AlreadyPaid: "N"
-    }*/
+    const IssuedInvoicePaymentMethods = paymentMethodInfo ? [{
+        PaymentMethod: {
+            ID: paymentMethodsRegister[paymentMethodInfo.paymentMethod].PaymentMethodId,
+        },
+        Amount: paymentMethodInfo.amount,
+        AlreadyPaid: paymentMethodInfo.alreadyPaid ? "D" : "N"
+    }] : null
 
     // Generate invoice object
     const invoice = {
@@ -233,12 +238,13 @@ const issueInvoice = async(req, res) => {
         PricesOnInvoice: "N", // D => VAT included in price, N => VAT is added to the prices,
         InvoiceType: "R", // R => issued invoice, P => proforma invoice
         IssuedInvoiceRows,
-        IssuedInvoicePaymentMethod
+        //IssuedInvoicePaymentMethods
     }
+    console.log(invoice)
     response = await apiPost(`${apiBaseUrl}/api/orgs/${orgId}/issuedinvoices`, authToken, invoice)
     if(response.statusCode !== httpStatusCodes.OK) return res.status(response.statusCode).json(response)
     const { IssuedInvoiceId, RowVersion } = response.data
-    const actionName = "IssueAndGeneratePdf"
+    const actionName = "issueAndGeneratepdf"
 
     // Issue invoice and generate pdf
     response = await apiPut(`${apiBaseUrl}/api/orgs/${orgId}/issuedinvoices/${IssuedInvoiceId}/actions/${actionName}?rowVersion=${RowVersion}`, authToken, null)

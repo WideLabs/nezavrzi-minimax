@@ -6,7 +6,7 @@ const orgId = process.env.organization_id.toString()
 // @route GET /organizations
 const getUserOrganizations = async (req, res) => {
     const {authToken} = req
-    const response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/paymentMethods`, authToken)
+    const response = await apiGet(`${apiBaseUrl}/api/currentuser/orgs`, authToken)
     return res.status(response.statusCode).json(response)
 }
 
@@ -18,7 +18,23 @@ const getPaymentMethods = async (req, res) => {
     return res.status(response.statusCode).json(response)
 }
 
+// @desc Get register of possible payment methods (the other way)
+// @route GET /organizations/paymentMethods
+const getIssuedInvoicePaymentMethods = async (req, res) => {
+    const {authToken} = req
+    const response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/issuedinvoices/paymentmethods`, authToken)
+    return res.status(response.statusCode).json(response)
+}
+
+const getDocumentNumberings = async (req, res) => {
+    const {authToken} = req
+    const response = await apiGet(`${apiBaseUrl}/api/orgs/${orgId}/document-numbering`, authToken)
+    return res.status(response.statusCode).json(response)
+}
+
 module.exports = {
     getUserOrganizations,
-    getPaymentMethods
+    getPaymentMethods,
+    getIssuedInvoicePaymentMethods,
+    getDocumentNumberings,
 }

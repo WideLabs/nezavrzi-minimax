@@ -1,6 +1,6 @@
 const express = require('express')
 const router = express.Router()
-const {getUserOrganizations, getPaymentMethods} = require('../controllers/organizationsController')
+const {getUserOrganizations, getPaymentMethods, getIssuedInvoicePaymentMethods, getDocumentNumberings} = require('../controllers/organizationsController')
 const {protect} = require('../middleware/authMiddleware')
 
 router.route('/')
@@ -8,5 +8,11 @@ router.route('/')
 
 router.route('/paymentMethods')
     .get(protect, getPaymentMethods)
+
+router.route('/issuedInvoicePaymentMethods')
+    .get(protect, getIssuedInvoicePaymentMethods)
+
+router.route('/documentNumberings')
+    .get(protect, getDocumentNumberings)
 
 module.exports = router
