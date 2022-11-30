@@ -1,31 +1,31 @@
 const itemMandatoryFieldsCheck = (item) => {
-    let mandatoryFields = ["Code", "Name", "Price"]
-    let missingFields = []
-    for(let i = 0; i < mandatoryFields.length; i++) {
-        const currentField = mandatoryFields.at(i)
-        if(!item[currentField]) {
-            missingFields.push(currentField)
-        }
+  let mandatoryFields = ["Code", "Name", "Price"];
+  let missingFields = [];
+  for (let i = 0; i < mandatoryFields.length; i++) {
+    const currentField = mandatoryFields.at(i);
+    if (!item[currentField]) {
+      missingFields.push(currentField);
     }
-    return missingFields
-}
+  }
+  return missingFields;
+};
 
 const customerMandatoryFieldsCheck = (customer) => {
-    let mandatoryFields = ["Code", "Name", "Address", "PostalCode", "City"]
-    if(customer.SubjectToVAT !== "N") {
-        mandatoryFields.push("VATIdentificationNumber")
+  let mandatoryFields = ["Code", "Name", "Address", "PostalCode", "City"];
+  if (customer.SubjectToVAT !== "N") {
+    mandatoryFields.push("VATIdentificationNumber");
+  }
+  let missingFields = [];
+  for (let i = 0; i < mandatoryFields.length; i++) {
+    const currentField = mandatoryFields.at(i);
+    if (!customer[currentField]) {
+      missingFields.push(currentField);
     }
-    let missingFields = []
-    for(let i = 0; i < mandatoryFields.length; i++) {
-        const currentField = mandatoryFields.at(i)
-        if(!customer[currentField]) {
-            missingFields.push(currentField)
-        }
-    }
-    return missingFields
-}
+  }
+  return missingFields;
+};
 
 module.exports = {
-    itemMandatoryFieldsCheck,
-    customerMandatoryFieldsCheck
-}
+  itemMandatoryFieldsCheck,
+  customerMandatoryFieldsCheck,
+};
