@@ -40,7 +40,6 @@ const protect = async (req, res, next) => {
         next();
       });
     } catch (error) {
-      console.log(error);
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         statusCode: httpStatusCodes.UNAUTHORIZED,
         error: `Authorization failed.`,
