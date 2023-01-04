@@ -104,6 +104,32 @@ const addCustomer = async (req, res) => {
     authToken,
     newCustomer
   );
+  if (response.statusCode !== httpStatusCodes.OK) {
+    res.status(response.statusCode).json(response);
+  }
+
+  // Create contact for customer
+  if (customer.Phone || customer.Email) {
+    const newCustomerId = response.data.CustomerId;
+
+    const newContact = {
+      Customer: {
+        ID: newCustomerId,
+      },
+      FullName: newCustomer.Name,
+      PhoneNumber: customer.Phone ? customer.Phone : null,
+      Email: customer.Email ? customer.Email : null,
+      Default: "D",
+    };
+
+    // No important data is returned so no await
+    await apiPost(
+      `${apiBaseUrl}/api/orgs/${orgId}/customers/${newCustomerId}/contacts`,
+      authToken,
+      newContact
+    );
+  }
+
   return res.status(response.statusCode).json(response);
 };
 

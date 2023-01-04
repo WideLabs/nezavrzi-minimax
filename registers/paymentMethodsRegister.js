@@ -13,7 +13,7 @@ const paymentMethodsRegister = {
     Usage: "D",
     Default: "D",
   },
-  G: {
+  GP: {
     PaymentMethodId: 304217,
     Name: "Gotovina po povzetju",
     Type: "G",

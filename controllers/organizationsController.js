@@ -44,9 +44,32 @@ const getDocumentNumberings = async (req, res) => {
   return res.status(response.statusCode).json(response);
 };
 
+const getCountryByCode = async (req, res) => {
+  const { authToken } = req;
+  const { code } = req.params;
+  console.log(code);
+  const response = await apiGet(
+    `${apiBaseUrl}/api/orgs/${orgId}/countries/code(${code})`,
+    authToken
+  );
+  return res.status(response.statusCode).json(response);
+};
+
+const getCurrencyByCode = async (req, res) => {
+  const { authToken } = req;
+  const { code } = req.params;
+  const response = await apiGet(
+    `${apiBaseUrl}/api/orgs/${orgId}/currencies/code(${code})`,
+    authToken
+  );
+  return res.status(response.statusCode).json(response);
+};
+
 module.exports = {
   getUserOrganizations,
   getPaymentMethods,
   getIssuedInvoicePaymentMethods,
   getDocumentNumberings,
+  getCountryByCode,
+  getCurrencyByCode,
 };

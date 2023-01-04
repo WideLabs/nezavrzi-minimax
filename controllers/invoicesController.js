@@ -1,11 +1,12 @@
 const { apiGet, apiPost, apiPut } = require("../api/callsApi");
 const httpStatusCodes = require("../utils/httpStatusCodes");
-const paymentMethodsRegister = require("../utils/paymentMethodsRegister");
+const paymentMethodsRegister = require("../registers/paymentMethodsRegister");
 const { apiBaseUrl } = require("../config");
 const {
   customerMandatoryFieldsCheck,
   itemMandatoryFieldsCheck,
 } = require("../utils/mandatoryFieldsCheck");
+const moment = require("moment");
 const orgId = process.env.organization_id.toString();
 
 // @desc Issue new invoice
@@ -13,6 +14,7 @@ const orgId = process.env.organization_id.toString();
 const issueInvoice = async (req, res) => {
   const { authToken } = req;
   const { customer, items, paymentMethodInfo, invoiceType } = req.body;
+
   if (!customer) {
     return res.status(httpStatusCodes.BAD_REQUEST).json({
       statusCode: httpStatusCodes.BAD_REQUEST,
@@ -46,22 +48,25 @@ const issueInvoice = async (req, res) => {
     }
   }
 
-  const date = new Date();
+  const expirationDays = Number(process.env.invoice_expiration_days);
+  const dateIssued = new moment();
+  const dateDue = new moment(dateIssued).add(expirationDays, "days");
 
   // Connected ID's
   let {
     countryCode,
     currencyCode,
     vatRateCode,
-    IRReportTemplateCode,
+    IssuedInvoiceReportTemplateCode,
     DOReportTemplateCode,
   } = req.body;
   let response = undefined;
   countryCode = countryCode ? countryCode : "SI";
   currencyCode = currencyCode ? currencyCode : "EUR";
   vatRateCode = vatRateCode ? vatRateCode : "S";
-  IRReportTemplateCode = IRReportTemplateCode ? IRReportTemplateCode : "IR";
+  IssuedInvoiceReportTemplateCode = invoiceType === "P" ? "PR" : "IR"; // PredRačun ali IzdaniRačun
   DOReportTemplateCode = DOReportTemplateCode ? DOReportTemplateCode : "DO";
+
   // Country data
   response = await apiGet(
     `${apiBaseUrl}/api/orgs/${orgId}/countries/code(${countryCode})`,
@@ -80,7 +85,7 @@ const issueInvoice = async (req, res) => {
   const currency = response.data;
   // Vatrate data
   response = await apiGet(
-    `${apiBaseUrl}/api/orgs/${orgId}/vatrates/code(${vatRateCode})?date=${date}&countryID=${country.CountryId}`,
+    `${apiBaseUrl}/api/orgs/${orgId}/vatrates/code(${vatRateCode})?date=${dateIssued}&countryID=${country.CountryId}`,
     authToken
   );
   if (response.statusCode !== httpStatusCodes.OK)
@@ -88,12 +93,12 @@ const issueInvoice = async (req, res) => {
   const vatRate = response.data;
   // IRReport Template data
   response = await apiGet(
-    `${apiBaseUrl}/api/orgs/${orgId}/report-templates?SearchString=${IRReportTemplateCode}&PageSize=100`,
+    `${apiBaseUrl}/api/orgs/${orgId}/report-templates?SearchString=${IssuedInvoiceReportTemplateCode}&PageSize=100`,
     authToken
   );
   if (response.statusCode !== httpStatusCodes.OK)
     return res.status(response.statusCode).json(response);
-  const IRReportTemplate = response.data;
+  const IssuedInvoiceReportTemplate = response.data;
   // DOReport Template data
   response = await apiGet(
     `${apiBaseUrl}/api/orgs/${orgId}/report-templates?SearchString=${DOReportTemplateCode}&PageSize=100`,
@@ -109,7 +114,7 @@ const issueInvoice = async (req, res) => {
     authToken
   );
   let mmCustomer = undefined;
-
+  let isNewCustomer = false;
   if (response.statusCode === httpStatusCodes.NOT_FOUND) {
     // Customer with that code doesnt exist yet, create new one
     // Check if customer contains all mandatory fields
@@ -138,7 +143,7 @@ const issueInvoice = async (req, res) => {
       Currency: {
         ID: currency.CurrencyId,
       },
-      EInvoiceIssuing: "SeNePripravlja", //KAJ Z TEM?
+      EInvoiceIssuing: "SeNePripravlja",
     };
     // Create new customer in minimax
     response = await apiPost(
@@ -146,31 +151,69 @@ const issueInvoice = async (req, res) => {
       authToken,
       newCustomer
     );
-    if (response.statusCode !== httpStatusCodes.OK)
+    if (response.statusCode !== httpStatusCodes.OK) {
       return res.status(response.statusCode).json(response);
+    }
+
     // Create contact for customer
-    const newContact = {
-      Customer: {
-        ID: newCustomer.CustomerId,
-      },
-      FullName: newCustomer.Name,
-      PhoneNumber: customer.Phone ? customer.Phone : null,
-      Email: customer.Email ? customer.Email : null,
-      Default: "D",
-    };
-    // No important data is returned so no await
-    apiPost(
-      `${apiBaseUrl}/api/orgs/${orgId}/customers/${newCustomer.CustomerId}/contacts`,
-      authToken,
-      newContact
-    );
+    if (customer.Phone || customer.Email) {
+      const newCustomerId = response.data.CustomerId;
+
+      const newContact = {
+        Customer: {
+          ID: newCustomerId,
+        },
+        FullName: newCustomer.Name,
+        PhoneNumber: customer.Phone ? customer.Phone : null,
+        Email: customer.Email ? customer.Email : null,
+        Default: "D",
+      };
+
+      // No important data is returned so no response
+      await apiPost(
+        `${apiBaseUrl}/api/orgs/${orgId}/customers/${newCustomerId}/contacts`,
+        authToken,
+        newContact
+      );
+    }
+    isNewCustomer = true;
   } else if (response.statusCode !== httpStatusCodes.OK) {
     // something else went wrong with get request
     return res.status(response.statusCode).json(response);
   }
+  // mmCustomer either found or created successfuly
   mmCustomer = response.data;
-  //TODO customer updating??
 
+  if (!isNewCustomer) {
+    // New customers dont need updating.
+    let updateNeeded = false;
+    for (let [key, value] of Object.entries(customer)) {
+      if (mmCustomer[key] && mmCustomer[key] !== value) {
+        mmCustomer[key] = value;
+        updateNeeded = true;
+      }
+    }
+
+    // If info is not synced update item
+    if (updateNeeded) {
+      response = await apiPut(
+        `${apiBaseUrl}/api/orgs/${orgId}/customers/${mmCustomer.CustomerId}`,
+        authToken,
+        mmCustomer
+      );
+
+      if (response.statusCode !== httpStatusCodes.OK)
+        return res.status(response.statusCode).json(response);
+      response = await apiGet(
+        `${apiBaseUrl}/api/orgs/${orgId}/customers/code(${mmCustomer.Code})`,
+        authToken
+      );
+
+      if (response.statusCode !== httpStatusCodes.OK)
+        return res.status(response.statusCode).json(response);
+      mmCustomer = response.data;
+    }
+  }
   let IssuedInvoiceRows = [];
   for (let i = 0; i < items.length; i++) {
     // item => admin page item object, mmItem => minimax item object
@@ -248,6 +291,7 @@ const issueInvoice = async (req, res) => {
         mmItem = response.data;
       }
     }
+
     const itemDDV = parseFloat(
       Number(mmItem.Price * (vatRate.Percent / 100)).toFixed(2)
     );
@@ -258,6 +302,7 @@ const issueInvoice = async (req, res) => {
       item.Quantity === 1
         ? itemPriceWithVAT
         : parseFloat(Number(itemPriceWithVAT * item.Quantity).toFixed(2));
+
     const IssuedInvoiceRow = {
       RowNumber: i + 1,
       Item: {
@@ -293,21 +338,23 @@ const issueInvoice = async (req, res) => {
         },
       ]
     : null;
+  const includeIssuedInvoicePaymentMethods =
+    process.env.include_invoice_payment_methods === "Y" ? true : false;
 
   // Generate invoice object
   const invoice = {
     Customer: {
       ID: mmCustomer.CustomerId,
     },
-    DateIssued: date,
-    DateTransaction: date,
-    DateTransactionFrom: date,
-    DateDue: date,
+    DateIssued: dateIssued,
+    DateTransaction: dateIssued,
+    DateTransactionFrom: dateIssued,
+    DateDue: dateDue,
     Currency: {
       ID: currency.CurrencyId,
     },
     IssuedInvoiceReportTemplate: {
-      ID: IRReportTemplate.ReportTemplateId,
+      ID: IssuedInvoiceReportTemplate.ReportTemplateId,
     },
     DeliveryNoteReportTemplate: {
       ID: DOReportTemplate.ReportTemplateId,
@@ -315,8 +362,11 @@ const issueInvoice = async (req, res) => {
     PricesOnInvoice: "N", // D => VAT included in price, N => VAT is added to the prices,
     InvoiceType: invoiceType ? invoiceType : "R", // R => issued invoice, P => proforma invoice
     IssuedInvoiceRows,
-    //IssuedInvoicePaymentMethods
+    IssuedInvoicePaymentMethods: includeIssuedInvoicePaymentMethods
+      ? IssuedInvoicePaymentMethods
+      : null,
   };
+
   response = await apiPost(
     `${apiBaseUrl}/api/orgs/${orgId}/issuedinvoices`,
     authToken,

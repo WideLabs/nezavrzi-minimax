@@ -5,6 +5,8 @@ const {
   getPaymentMethods,
   getIssuedInvoicePaymentMethods,
   getDocumentNumberings,
+  getCountryByCode,
+  getCurrencyByCode,
 } = require("../controllers/organizationsController");
 const { protect } = require("../middleware/authMiddleware");
 
@@ -17,5 +19,9 @@ router
   .get(protect, getIssuedInvoicePaymentMethods);
 
 router.route("/documentNumberings").get(protect, getDocumentNumberings);
+
+router.route("/currencies/code/:code").get(protect, getCurrencyByCode);
+
+router.route("/countries/code/:code").get(protect, getCountryByCode);
 
 module.exports = router;
