@@ -49,6 +49,7 @@ const issueInvoice = async (req, res) => {
   }
 
   const expirationDays = Number(process.env.invoice_expiration_days);
+  expirationDays = expirationDays ? expirationDays : 10;
   const dateIssued = new moment();
   const dateDue = new moment(dateIssued).add(expirationDays, "days");
 
