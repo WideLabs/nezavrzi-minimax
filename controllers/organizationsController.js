@@ -25,7 +25,7 @@ const getPaymentMethods = async (req, res) => {
 };
 
 // @desc Get register of possible payment methods (the other way)
-// @route GET /organizations/paymentMethods
+// @route GET /organizations/issuedInvoicePaymentMethods
 const getIssuedInvoicePaymentMethods = async (req, res) => {
   const { authToken } = req;
   const response = await apiGet(
@@ -35,6 +35,8 @@ const getIssuedInvoicePaymentMethods = async (req, res) => {
   return res.status(response.statusCode).json(response);
 };
 
+// @desc Get register of documentNumberings for organization
+// @route GET /organizations/documentNumberings
 const getDocumentNumberings = async (req, res) => {
   const { authToken } = req;
   const response = await apiGet(
@@ -44,10 +46,11 @@ const getDocumentNumberings = async (req, res) => {
   return res.status(response.statusCode).json(response);
 };
 
+// @desc Get country by code
+// @route GET /organizations/countries/code/:code
 const getCountryByCode = async (req, res) => {
   const { authToken } = req;
   const { code } = req.params;
-  console.log(code);
   const response = await apiGet(
     `${apiBaseUrl}/api/orgs/${orgId}/countries/code(${code})`,
     authToken
@@ -55,6 +58,8 @@ const getCountryByCode = async (req, res) => {
   return res.status(response.statusCode).json(response);
 };
 
+// @desc Get currency by code
+// @route GET /organizations//currencies/code/:code
 const getCurrencyByCode = async (req, res) => {
   const { authToken } = req;
   const { code } = req.params;

@@ -1,6 +1,7 @@
 const { apiGet, apiPost, apiPut } = require("../api/callsApi");
 const httpStatusCodes = require("../utils/httpStatusCodes");
 const paymentMethodsRegister = require("../registers/paymentMethodsRegister");
+const documentNumberingsRegister = require("../registers/documentNumberingsRegister");
 const { apiBaseUrl } = require("../config");
 const {
   customerMandatoryFieldsCheck,
@@ -334,13 +335,23 @@ const issueInvoice = async (req, res) => {
       ]
     : null;
   const includeIssuedInvoicePaymentMethods =
-    process.env.include_invoice_payment_methods === "Y" ? true : false;
+    process.env.NODE_ENV === "PROD" ? true : false;
+
+  const documentNumbering =
+    process.env.NODE_ENV === "PROD"
+      ? documentNumberingsRegister.NZDefault
+      : null;
 
   // Generate invoice object
   const invoice = {
     Customer: {
       ID: mmCustomer.CustomerId,
     },
+    DocumentNumbering: documentNumbering
+      ? {
+          ID: documentNumbering.DocumentNumberingId,
+        }
+      : null,
     DateIssued: dateIssued,
     DateTransaction: dateIssued,
     DateTransactionFrom: dateIssued,
