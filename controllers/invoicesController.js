@@ -48,7 +48,7 @@ const issueInvoice = async (req, res) => {
     }
   }
 
-  const expirationDays = Number(process.env.invoice_expiration_days);
+  let expirationDays = Number(process.env.invoice_expiration_days);
   expirationDays = expirationDays ? expirationDays : 10;
   const dateIssued = new moment();
   const dateDue = new moment(dateIssued).add(expirationDays, "days");
@@ -76,6 +76,7 @@ const issueInvoice = async (req, res) => {
   if (response.statusCode !== httpStatusCodes.OK)
     return res.status(response.statusCode).json(response);
   const country = response.data;
+
   // Currency data
   response = await apiGet(
     `${apiBaseUrl}/api/orgs/${orgId}/currencies/code(${currencyCode})`,
@@ -84,6 +85,7 @@ const issueInvoice = async (req, res) => {
   if (response.statusCode !== httpStatusCodes.OK)
     return res.status(response.statusCode).json(response);
   const currency = response.data;
+
   // Vatrate data
   response = await apiGet(
     `${apiBaseUrl}/api/orgs/${orgId}/vatrates/code(${vatRateCode})?date=${dateIssued}&countryID=${country.CountryId}`,
@@ -92,6 +94,7 @@ const issueInvoice = async (req, res) => {
   if (response.statusCode !== httpStatusCodes.OK)
     return res.status(response.statusCode).json(response);
   const vatRate = response.data;
+
   // IRReport Template data
   response = await apiGet(
     `${apiBaseUrl}/api/orgs/${orgId}/report-templates?SearchString=${IssuedInvoiceReportTemplateCode}&PageSize=100`,
@@ -100,6 +103,7 @@ const issueInvoice = async (req, res) => {
   if (response.statusCode !== httpStatusCodes.OK)
     return res.status(response.statusCode).json(response);
   const IssuedInvoiceReportTemplate = response.data;
+
   // DOReport Template data
   response = await apiGet(
     `${apiBaseUrl}/api/orgs/${orgId}/report-templates?SearchString=${DOReportTemplateCode}&PageSize=100`,
@@ -215,6 +219,7 @@ const issueInvoice = async (req, res) => {
       mmCustomer = response.data;
     }
   }
+
   let IssuedInvoiceRows = [];
   for (let i = 0; i < items.length; i++) {
     // item => admin page item object, mmItem => minimax item object
@@ -293,17 +298,6 @@ const issueInvoice = async (req, res) => {
       }
     }
 
-    const itemDDV = parseFloat(
-      Number(mmItem.Price * (vatRate.Percent / 100)).toFixed(2)
-    );
-    const itemPriceWithVAT = parseFloat(
-      Number(mmItem.Price + itemDDV).toFixed(2)
-    );
-    const itemPriceWithVATAndQuantity =
-      item.Quantity === 1
-        ? itemPriceWithVAT
-        : parseFloat(Number(itemPriceWithVAT * item.Quantity).toFixed(2));
-
     const IssuedInvoiceRow = {
       RowNumber: i + 1,
       Item: {
@@ -314,10 +308,10 @@ const issueInvoice = async (req, res) => {
       UnitOfMeasurement: mmItem.UnitOfMeasurement,
       Description: mmItem.Description,
       Quantity: item.Quantity,
-      Price: mmItem.Price,
-      PriceWithVAT: itemPriceWithVAT,
+      Price: mmItem.Price / 1.22, //mmItem.Price, item price without ddv
+      PriceWithVAT: mmItem.Price, //itemPriceWithVAT,
       VATPercent: vatRate.Percent,
-      Value: itemPriceWithVATAndQuantity,
+      Value: mmItem.Price * mmItem.Quantity, //itemPriceWithVATAndQuantity,
       Discount: 0,
       DiscountPercent: 0,
       VatRate: {
@@ -360,7 +354,7 @@ const issueInvoice = async (req, res) => {
     DeliveryNoteReportTemplate: {
       ID: DOReportTemplate.ReportTemplateId,
     },
-    PricesOnInvoice: "N", // D => VAT included in price, N => VAT is added to the prices,
+    PricesOnInvoice: "D", // D => VAT included in price, N => VAT is added to the prices,
     InvoiceType: invoiceType ? invoiceType : "R", // R => issued invoice, P => proforma invoice
     IssuedInvoiceRows,
     IssuedInvoicePaymentMethods: includeIssuedInvoicePaymentMethods
@@ -373,8 +367,11 @@ const issueInvoice = async (req, res) => {
     authToken,
     invoice
   );
-  if (response.statusCode !== httpStatusCodes.OK)
+  if (response.statusCode !== httpStatusCodes.OK) {
+    console.log(response);
     return res.status(response.statusCode).json(response);
+  }
+
   const { IssuedInvoiceId, RowVersion } = response.data;
   const actionName = "issueAndGeneratepdf";
 
