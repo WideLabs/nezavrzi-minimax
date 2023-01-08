@@ -10,6 +10,29 @@ const {
 const moment = require("moment");
 const orgId = process.env.organization_id.toString();
 
+// @desc Get all invoices for organization
+// @route GET /invoices
+const getIssuedInvoices = async (req, res) => {
+  const { authToken } = req;
+  const response = await apiGet(
+    `${apiBaseUrl}/api/orgs/${orgId}/issuedinvoices`,
+    authToken
+  );
+  return res.status(response.statusCode).json(response);
+};
+
+// @desc Get all invoices for organization
+// @route GET /invoices
+const getIssuedInvoice = async (req, res) => {
+  const { authToken } = req;
+  const { id } = req.params;
+  const response = await apiGet(
+    `${apiBaseUrl}/api/orgs/${orgId}/issuedinvoices/${id}`,
+    authToken
+  );
+  return res.status(response.statusCode).json(response);
+};
+
 // @desc Issue new invoice
 // @route POST /invoices
 const issueInvoice = async (req, res) => {
@@ -49,10 +72,15 @@ const issueInvoice = async (req, res) => {
     }
   }
 
-  let expirationDays = Number(process.env.invoice_expiration_days);
-  expirationDays = expirationDays ? expirationDays : 10;
   const dateIssued = new moment();
-  const dateDue = new moment(dateIssued).add(expirationDays, "days");
+  let dateDue;
+  if (invoiceType === "P") {
+    // Pri predračunih dodaj rok zapadlosti
+    let proformaExpirationDays = Number(process.env.invoice_expiration_days);
+    dateDue = new moment(dateIssued).add(proformaExpirationDays);
+  } else {
+    dateDue = dateIssued;
+  }
 
   // Connected ID's
   let {
@@ -119,6 +147,7 @@ const issueInvoice = async (req, res) => {
     `${apiBaseUrl}/api/orgs/${orgId}/customers/code(${customer.Code})`,
     authToken
   );
+
   let mmCustomer = undefined;
   let isNewCustomer = false;
   if (response.statusCode === httpStatusCodes.NOT_FOUND) {
@@ -322,20 +351,19 @@ const issueInvoice = async (req, res) => {
     IssuedInvoiceRows.push(IssuedInvoiceRow);
   }
 
-  const IssuedInvoicePaymentMethods = paymentMethodInfo
-    ? [
-        {
-          PaymentMethod: {
-            ID: paymentMethodsRegister[paymentMethodInfo.paymentMethod]
-              .PaymentMethodId,
+  const IssuedInvoicePaymentMethods =
+    paymentMethodInfo && process.env.NODE_ENV === "PROD"
+      ? [
+          {
+            PaymentMethod: {
+              ID: paymentMethodsRegister[paymentMethodInfo.paymentMethod]
+                .PaymentMethodId,
+            },
+            Amount: paymentMethodInfo.amount,
+            AlreadyPaid: paymentMethodInfo.alreadyPaid ? "D" : "N",
           },
-          Amount: paymentMethodInfo.amount,
-          AlreadyPaid: paymentMethodInfo.alreadyPaid ? "D" : "N",
-        },
-      ]
-    : null;
-  const includeIssuedInvoicePaymentMethods =
-    process.env.NODE_ENV === "PROD" ? true : false;
+        ]
+      : null;
 
   const documentNumbering =
     process.env.NODE_ENV === "PROD"
@@ -368,9 +396,7 @@ const issueInvoice = async (req, res) => {
     PricesOnInvoice: "D", // D => VAT included in price, N => VAT is added to the prices,
     InvoiceType: invoiceType ? invoiceType : "R", // R => issued invoice, P => proforma invoice
     IssuedInvoiceRows,
-    IssuedInvoicePaymentMethods: includeIssuedInvoicePaymentMethods
-      ? IssuedInvoicePaymentMethods
-      : null,
+    IssuedInvoicePaymentMethods: IssuedInvoicePaymentMethods,
   };
 
   response = await apiPost(
@@ -398,6 +424,246 @@ const issueInvoice = async (req, res) => {
   return res.status(httpStatusCodes.OK).json(response);
 };
 
+// @desc Issues a new invoice based on a copy of a proforma invoice
+// @route POST /reference
+const issueInvoiceFromProforma = async (req, res) => {
+  const { authToken } = req;
+  const { customer, items, documentReference, paymentMethodInfo } = req.body;
+
+  if (!customer) {
+    return res.status(httpStatusCodes.BAD_REQUEST).json({
+      statusCode: httpStatusCodes.BAD_REQUEST,
+      error: "Missing customer in request body.",
+    });
+  }
+  if (!customer.Code) {
+    return res.status(httpStatusCodes.BAD_REQUEST).json({
+      statusCode: httpStatusCodes.BAD_REQUEST,
+      error: "Missing customer mandatory field {Code}",
+    });
+  }
+  if (!items || items.length < 1) {
+    return res.status(httpStatusCodes.BAD_REQUEST).json({
+      statusCode: httpStatusCodes.BAD_REQUEST,
+      error: "Missing items in request body.",
+    });
+  }
+  for (let i = 0; i < items.length; i++) {
+    if (!items[i].Code) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        statusCode: httpStatusCodes.BAD_REQUEST,
+        error: `Missing item mandatory field {Code} at index ${i + 1}`,
+      });
+    }
+    if (!items[i].Quantity) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        statusCode: httpStatusCodes.BAD_REQUEST,
+        error: `Missing item mandatory field {Quantity} at index ${i + 1}`,
+      });
+    }
+    if (!items[i].Price && items[i].Code !== "POSTA-PRP") {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        statusCode: httpStatusCodes.BAD_REQUEST,
+        error: `Missing item mandatory field {Quantity} at index ${i + 1}`,
+      });
+    }
+  }
+  if (!documentReference) {
+    return res.status(httpStatusCodes.BAD_REQUEST).json({
+      statusCode: httpStatusCodes.BAD_REQUEST,
+      error: "Missing document reference in request body.",
+    });
+  }
+
+  const dateIssued = new moment();
+
+  let { countryCode, currencyCode, vatRateCode } = req.body;
+
+  let response = undefined;
+  countryCode = countryCode ? countryCode : "SI";
+  currencyCode = currencyCode ? currencyCode : "EUR";
+  vatRateCode = vatRateCode ? vatRateCode : "S";
+  const IssuedInvoiceReportTemplateCode = "IR";
+  const DOReportTemplateCode = "DO";
+
+  // Country data
+  response = await apiGet(
+    `${apiBaseUrl}/api/orgs/${orgId}/countries/code(${countryCode})`,
+    authToken
+  );
+  if (response.statusCode !== httpStatusCodes.OK)
+    return res.status(response.statusCode).json(response);
+  const country = response.data;
+
+  // Currency data
+  response = await apiGet(
+    `${apiBaseUrl}/api/orgs/${orgId}/currencies/code(${currencyCode})`,
+    authToken
+  );
+  if (response.statusCode !== httpStatusCodes.OK)
+    return res.status(response.statusCode).json(response);
+  const currency = response.data;
+
+  // Vatrate data
+  response = await apiGet(
+    `${apiBaseUrl}/api/orgs/${orgId}/vatrates/code(${vatRateCode})?date=${dateIssued}&countryID=${country.CountryId}`,
+    authToken
+  );
+  if (response.statusCode !== httpStatusCodes.OK)
+    return res.status(response.statusCode).json(response);
+  const vatRate = response.data;
+
+  // IRReport Template data
+  response = await apiGet(
+    `${apiBaseUrl}/api/orgs/${orgId}/report-templates?SearchString=${IssuedInvoiceReportTemplateCode}&PageSize=100`,
+    authToken
+  );
+  if (response.statusCode !== httpStatusCodes.OK)
+    return res.status(response.statusCode).json(response);
+  const IssuedInvoiceReportTemplate = response.data;
+
+  // DOReport Template data
+  response = await apiGet(
+    `${apiBaseUrl}/api/orgs/${orgId}/report-templates?SearchString=${DOReportTemplateCode}&PageSize=100`,
+    authToken
+  );
+  if (response.statusCode !== httpStatusCodes.OK)
+    return res.status(response.statusCode).json(response);
+  const DOReportTemplate = response.data;
+
+  // Get customer info by Code
+  // No adding new customers or updating customers
+  // Info must be equal to documentReference
+  response = await apiGet(
+    `${apiBaseUrl}/api/orgs/${orgId}/customers/code(${customer.Code})`,
+    authToken
+  );
+  if (response.statusCode === httpStatusCodes.NOT_FOUND) {
+    return res.status(httpStatusCodes.BAD_REQUEST).json({
+      statusCode: httpStatusCodes.BAD_REQUEST,
+      error: `Customer with Code: {${customer.Code}} not found.`,
+    });
+  }
+  const mmCustomer = response.data;
+
+  let IssuedInvoiceRows = [];
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    response = await apiGet(
+      `${apiBaseUrl}/api/orgs/${orgId}/items/code(${item.Code})`,
+      authToken
+    );
+    if (response.statusCode === httpStatusCodes.NOT_FOUND) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        statusCode: httpStatusCodes.BAD_REQUEST,
+        error: `Item with Code: {${item.Code}} not found.`,
+      });
+    }
+    const mmItem = response.data;
+    if (item.Code === "POSTA-PRP") {
+      item.Price = mmItem.Price;
+    }
+    const IssuedInvoiceRow = {
+      RowNumber: i + 1,
+      Item: {
+        ID: mmItem.ItemId,
+      },
+      ItemName: mmItem.Name,
+      ItemCode: mmItem.Code,
+      UnitOfMeasurement: mmItem.UnitOfMeasurement,
+      Description: mmItem.Description,
+      Quantity: item.Quantity,
+      Price: item.Price / 1.22, // Price without DDV,
+      PriceWithVAT: item.Price,
+      VATPercent: vatRate.Percent,
+      Value: item.Price * item.Quantity,
+      Discount: 0,
+      DiscountPercent: 0,
+      VatRate: {
+        ID: vatRate.VatRateId,
+      },
+    };
+    IssuedInvoiceRows.push(IssuedInvoiceRow);
+  }
+
+  const IssuedInvoicePaymentMethods =
+    paymentMethodInfo && process.env.NODE_ENV === "PROD"
+      ? [
+          {
+            PaymentMethod: {
+              ID: paymentMethodsRegister[paymentMethodInfo.paymentMethod]
+                .PaymentMethodId,
+            },
+            Amount: paymentMethodInfo.amount,
+            AlreadyPaid: paymentMethodInfo.alreadyPaid ? "D" : "N",
+          },
+        ]
+      : null;
+
+  const documentNumbering =
+    process.env.NODE_ENV === "PROD"
+      ? documentNumberingsRegister.NZDefault
+      : null;
+
+  // Generate invoice object
+  const invoice = {
+    Customer: {
+      ID: mmCustomer.CustomerId,
+    },
+    DocumentNumbering: documentNumbering
+      ? {
+          ID: documentNumbering.DocumentNumberingId,
+        }
+      : null,
+    DocumentReference: documentReference,
+    DateIssued: dateIssued,
+    DateTransaction: dateIssued,
+    DateTransactionFrom: dateIssued,
+    DateDue: dateIssued,
+    Currency: {
+      ID: currency.CurrencyId,
+    },
+    IssuedInvoiceReportTemplate: {
+      ID: IssuedInvoiceReportTemplate.ReportTemplateId,
+    },
+    DeliveryNoteReportTemplate: {
+      ID: DOReportTemplate.ReportTemplateId,
+    },
+    PricesOnInvoice: "D", // D => VAT included in price, N => VAT is added to the prices,
+    InvoiceType: "R", // R => issued invoice, P => proforma invoice
+    IssuedInvoiceRows,
+    IssuedInvoicePaymentMethods: IssuedInvoicePaymentMethods,
+  };
+
+  response = await apiPost(
+    `${apiBaseUrl}/api/orgs/${orgId}/issuedinvoices`,
+    authToken,
+    invoice
+  );
+
+  if (response.statusCode !== httpStatusCodes.OK) {
+    console.log(response);
+    return res.status(response.statusCode).json(response);
+  }
+
+  const { IssuedInvoiceId, RowVersion } = response.data;
+  const actionName = "issueAndGeneratepdf";
+
+  // Issue invoice and generate pdf
+  response = await apiPut(
+    `${apiBaseUrl}/api/orgs/${orgId}/issuedinvoices/${IssuedInvoiceId}/actions/${actionName}?rowVersion=${RowVersion}`,
+    authToken,
+    null
+  );
+  if (response.statusCode !== httpStatusCodes.OK)
+    return res.status(response.statusCode).json(response);
+
+  return res.status(httpStatusCodes.OK).json(response);
+};
+
 module.exports = {
   issueInvoice,
+  getIssuedInvoices,
+  issueInvoiceFromProforma,
+  getIssuedInvoice,
 };

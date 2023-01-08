@@ -1,5 +1,5 @@
 const { apiGet, apiPost, apiPut } = require("../api/callsApi");
-const { getFormatedDate } = require("../utils/dateUtils");
+const moment = require("moment");
 const { apiBaseUrl } = require("../config");
 const httpStatusCodes = require("../utils/httpStatusCodes");
 const { itemMandatoryFieldsCheck } = require("../utils/mandatoryFieldsCheck");
@@ -59,7 +59,7 @@ const addItem = async (req, res) => {
     });
   }
 
-  const date = getFormatedDate();
+  const date = moment();
 
   // Connected ID's
   let { countryCode, currencyCode } = req.body;
