@@ -10,29 +10,6 @@ const {
 const moment = require("moment");
 const orgId = process.env.organization_id.toString();
 
-// @desc Get all invoices for organization
-// @route GET /invoices
-const getIssuedInvoices = async (req, res) => {
-  const { authToken } = req;
-  const response = await apiGet(
-    `${apiBaseUrl}/api/orgs/${orgId}/issuedinvoices`,
-    authToken
-  );
-  return res.status(response.statusCode).json(response);
-};
-
-// @desc Get all invoices for organization
-// @route GET /invoices
-const getIssuedInvoice = async (req, res) => {
-  const { authToken } = req;
-  const { id } = req.params;
-  const response = await apiGet(
-    `${apiBaseUrl}/api/orgs/${orgId}/issuedinvoices/${id}`,
-    authToken
-  );
-  return res.status(response.statusCode).json(response);
-};
-
 // @desc Issue new invoice
 // @route POST /invoices
 const issueInvoice = async (req, res) => {
@@ -663,7 +640,5 @@ const issueInvoiceFromProforma = async (req, res) => {
 
 module.exports = {
   issueInvoice,
-  getIssuedInvoices,
   issueInvoiceFromProforma,
-  getIssuedInvoice,
 };
