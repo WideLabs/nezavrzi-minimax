@@ -386,6 +386,10 @@ const issueInvoice = async (req, res) => {
     return res.status(response.statusCode).json(response);
   }
 
+  if (process.env.prevent_invoice_issuing === "Y") {
+    return res.status(response.statusCode).json(response);
+  }
+
   const { IssuedInvoiceId, RowVersion } = response.data;
   const actionName = "issueAndGeneratepdf";
 
@@ -620,6 +624,10 @@ const issueInvoiceFromProforma = async (req, res) => {
 
   if (response.statusCode !== httpStatusCodes.OK) {
     console.log(response);
+    return res.status(response.statusCode).json(response);
+  }
+
+  if (process.env.prevent_invoice_issuing === "Y") {
     return res.status(response.statusCode).json(response);
   }
 
