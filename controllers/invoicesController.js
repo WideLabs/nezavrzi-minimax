@@ -324,6 +324,9 @@ const issueInvoice = async (req, res) => {
       VatRate: {
         ID: vatRate.VatRateId,
       },
+      Warehouse: {
+        ID: 19090,
+      },
     };
     IssuedInvoiceRows.push(IssuedInvoiceRow);
   }
@@ -562,6 +565,9 @@ const issueInvoiceFromProforma = async (req, res) => {
       DiscountPercent: 0,
       VatRate: {
         ID: vatRate.VatRateId,
+      },
+      Warehouse: {
+        ID: 19090,
       },
     };
     IssuedInvoiceRows.push(IssuedInvoiceRow);
