@@ -324,6 +324,9 @@ const issueInvoice = async (req, res) => {
       VatRate: {
         ID: vatRate.VatRateId,
       },
+      Warehouse: {
+        ID: 19090,
+      },
     };
     IssuedInvoiceRows.push(IssuedInvoiceRow);
   }
@@ -383,6 +386,10 @@ const issueInvoice = async (req, res) => {
   );
   if (response.statusCode !== httpStatusCodes.OK) {
     console.log(response);
+    return res.status(response.statusCode).json(response);
+  }
+
+  if (process.env.prevent_invoice_issuing === "Y") {
     return res.status(response.statusCode).json(response);
   }
 
@@ -559,6 +566,9 @@ const issueInvoiceFromProforma = async (req, res) => {
       VatRate: {
         ID: vatRate.VatRateId,
       },
+      Warehouse: {
+        ID: 19090,
+      },
     };
     IssuedInvoiceRows.push(IssuedInvoiceRow);
   }
@@ -620,6 +630,10 @@ const issueInvoiceFromProforma = async (req, res) => {
 
   if (response.statusCode !== httpStatusCodes.OK) {
     console.log(response);
+    return res.status(response.statusCode).json(response);
+  }
+
+  if (process.env.prevent_invoice_issuing === "Y") {
     return res.status(response.statusCode).json(response);
   }
 
