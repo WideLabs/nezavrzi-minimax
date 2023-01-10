@@ -1,7 +1,7 @@
 const { apiGet, apiPost, apiPut } = require("../api/callsApi");
 const httpStatusCodes = require("../utils/httpStatusCodes");
 const paymentMethodsRegister = require("../registers/paymentMethodsRegister");
-const documentNumberingsRegister = require("../registers/documentNumberingsRegister");
+const defaultValuesRegister = require("../registers/defaultValuesRegister");
 const { apiBaseUrl } = require("../config");
 const {
   customerMandatoryFieldsCheck,
@@ -60,39 +60,43 @@ const issueInvoice = async (req, res) => {
   }
 
   // Connected ID's
-  let {
-    countryCode,
-    currencyCode,
-    vatRateCode,
-    IssuedInvoiceReportTemplateCode,
-    DOReportTemplateCode,
-  } = req.body;
+  let { countryCode, currencyCode, vatRateCode, employeeId } = req.body;
   let response = undefined;
-  countryCode = countryCode ? countryCode : "SI";
-  currencyCode = currencyCode ? currencyCode : "EUR";
+
+  let country;
+  if (countryCode && countryCode !== defaultValuesRegister.country.Code) {
+    // If countryCode is not the same as the default set country
+    // Get country data from minimax
+    response = await apiGet(
+      `${apiBaseUrl}/api/orgs/${orgId}/countries/code(${countryCode})`,
+      authToken
+    );
+    if (response.statusCode !== httpStatusCodes.OK)
+      return res.status(response.statusCode).json(response);
+    country = response.data;
+  } else {
+    // Use the default country set in the defaultValuesRegister
+    country = defaultValuesRegister.country;
+  }
+
+  let currency;
+  if (currencyCode && currencyCode !== defaultValuesRegister.currency.Code) {
+    // If currencyCode is not the same as the default set currency
+    // Get currency data from minimax
+    response = await apiGet(
+      `${apiBaseUrl}/api/orgs/${orgId}/currencies/code(${currencyCode})`,
+      authToken
+    );
+    if (response.statusCode !== httpStatusCodes.OK)
+      return res.status(response.statusCode).json(response);
+    currency = response.data;
+  } else {
+    // Use the default currency set in the defaultValuesRegister
+    currency = defaultValuesRegister.currency;
+  }
+
+  // VatRate is dependant on date of issuing so always refresh object by calling minimax
   vatRateCode = vatRateCode ? vatRateCode : "S";
-  IssuedInvoiceReportTemplateCode = invoiceType === "P" ? "PR" : "IR"; // PredRačun ali IzdaniRačun
-  DOReportTemplateCode = DOReportTemplateCode ? DOReportTemplateCode : "DO";
-
-  // Country data
-  response = await apiGet(
-    `${apiBaseUrl}/api/orgs/${orgId}/countries/code(${countryCode})`,
-    authToken
-  );
-  if (response.statusCode !== httpStatusCodes.OK)
-    return res.status(response.statusCode).json(response);
-  const country = response.data;
-
-  // Currency data
-  response = await apiGet(
-    `${apiBaseUrl}/api/orgs/${orgId}/currencies/code(${currencyCode})`,
-    authToken
-  );
-  if (response.statusCode !== httpStatusCodes.OK)
-    return res.status(response.statusCode).json(response);
-  const currency = response.data;
-
-  // Vatrate data
   response = await apiGet(
     `${apiBaseUrl}/api/orgs/${orgId}/vatrates/code(${vatRateCode})?date=${dateIssued}&countryID=${country.CountryId}`,
     authToken
@@ -101,23 +105,37 @@ const issueInvoice = async (req, res) => {
     return res.status(response.statusCode).json(response);
   const vatRate = response.data;
 
-  // IRReport Template data
-  response = await apiGet(
-    `${apiBaseUrl}/api/orgs/${orgId}/report-templates?SearchString=${IssuedInvoiceReportTemplateCode}&PageSize=100`,
-    authToken
-  );
-  if (response.statusCode !== httpStatusCodes.OK)
-    return res.status(response.statusCode).json(response);
-  const IssuedInvoiceReportTemplate = response.data;
+  let IssuedInvoiceReportTemplate;
+  if (invoiceType === "P") {
+    // Privzeto nastavljena predloga za tiskane predračune
+    IssuedInvoiceReportTemplate =
+      defaultValuesRegister.issuedInvoiceReportTemplates.PR;
+  } else {
+    // Privzeto nastavljena predloga za tiskane izdane račune
+    IssuedInvoiceReportTemplate =
+      defaultValuesRegister.issuedInvoiceReportTemplates.IR;
+  }
 
-  // DOReport Template data
-  response = await apiGet(
-    `${apiBaseUrl}/api/orgs/${orgId}/report-templates?SearchString=${DOReportTemplateCode}&PageSize=100`,
-    authToken
-  );
-  if (response.statusCode !== httpStatusCodes.OK)
-    return res.status(response.statusCode).json(response);
-  const DOReportTemplate = response.data;
+  // Privzeto nastavljena predloga za dobavnice
+  let DeliveryNoteReportTemplate =
+    defaultValuesRegister.deliveryNoteReportTemplate;
+
+  // Privzeto nastavljeno številčenje dokumentov
+  let documentNumbering = defaultValuesRegister.documentNumbering;
+
+  // Delavci in skladišče
+  let employee = employeeId
+    ? { EmployeeId: employeeId }
+    : defaultValuesRegister.employee;
+  let warehouse = defaultValuesRegister.warehouse;
+
+  if (process.env.NODE_ENV === "DEV") {
+    IssuedInvoiceReportTemplate = {};
+    DeliveryNoteReportTemplate = {};
+    employee = null;
+    warehouse = null;
+    documentNumbering = null;
+  }
 
   // Get customer info by Code
   response = await apiGet(
@@ -206,7 +224,7 @@ const issueInvoice = async (req, res) => {
       }
     }
 
-    // If info is not synced update item
+    // If info is not synced update customer
     if (updateNeeded) {
       response = await apiPut(
         `${apiBaseUrl}/api/orgs/${orgId}/customers/${mmCustomer.CustomerId}`,
@@ -227,6 +245,8 @@ const issueInvoice = async (req, res) => {
     }
   }
 
+  const preventItemUpdating =
+    process.env.prevent_item_updating === "Y" ? true : false;
   let IssuedInvoiceRows = [];
   for (let i = 0; i < items.length; i++) {
     // item => admin page item object, mmItem => minimax item object
@@ -287,7 +307,7 @@ const issueInvoice = async (req, res) => {
       }
 
       // If info is not synced update item
-      if (updateNeeded) {
+      if (updateNeeded && !preventItemUpdating) {
         response = await apiPut(
           `${apiBaseUrl}/api/orgs/${orgId}/items/${mmItem.ItemId}`,
           authToken,
@@ -318,15 +338,17 @@ const issueInvoice = async (req, res) => {
       Price: mmItem.Price / 1.22, //mmItem.Price, item price without ddv
       PriceWithVAT: mmItem.Price, //itemPriceWithVAT,
       VATPercent: vatRate.Percent,
-      Value: mmItem.Price * mmItem.Quantity, //itemPriceWithVATAndQuantity,
+      Value: mmItem.Price * item.Quantity, //itemPriceWithVATAndQuantity,
       Discount: 0,
       DiscountPercent: 0,
       VatRate: {
         ID: vatRate.VatRateId,
       },
-      Warehouse: {
-        ID: 19090,
-      },
+      Warehouse: warehouse
+        ? {
+            ID: warehouse.WarehouseId,
+          }
+        : null,
     };
     IssuedInvoiceRows.push(IssuedInvoiceRow);
   }
@@ -343,11 +365,6 @@ const issueInvoice = async (req, res) => {
             AlreadyPaid: paymentMethodInfo.alreadyPaid ? "D" : "N",
           },
         ]
-      : null;
-
-  const documentNumbering =
-    process.env.NODE_ENV === "PROD"
-      ? documentNumberingsRegister.NZDefault
       : null;
 
   // Generate invoice object
@@ -367,12 +384,21 @@ const issueInvoice = async (req, res) => {
     Currency: {
       ID: currency.CurrencyId,
     },
-    IssuedInvoiceReportTemplate: {
-      ID: IssuedInvoiceReportTemplate.ReportTemplateId,
-    },
-    DeliveryNoteReportTemplate: {
-      ID: DOReportTemplate.ReportTemplateId,
-    },
+    IssuedInvoiceReportTemplate: IssuedInvoiceReportTemplate
+      ? {
+          ID: IssuedInvoiceReportTemplate.ReportTemplateId,
+        }
+      : null,
+    DeliveryNoteReportTemplate: DeliveryNoteReportTemplate
+      ? {
+          ID: DeliveryNoteReportTemplate.ReportTemplateId,
+        }
+      : null,
+    Employee: employee
+      ? {
+          ID: employee.EmployeeId,
+        }
+      : null,
     PricesOnInvoice: "D", // D => VAT included in price, N => VAT is added to the prices,
     InvoiceType: invoiceType ? invoiceType : "R", // R => issued invoice, P => proforma invoice
     IssuedInvoiceRows,
@@ -448,7 +474,7 @@ const issueInvoiceFromProforma = async (req, res) => {
     if (!items[i].Price && items[i].Code !== "POSTA-PRP") {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         statusCode: httpStatusCodes.BAD_REQUEST,
-        error: `Missing item mandatory field {Quantity} at index ${i + 1}`,
+        error: `Missing item mandatory field {Price} at index ${i + 1}`,
       });
     }
   }
@@ -461,34 +487,44 @@ const issueInvoiceFromProforma = async (req, res) => {
 
   const dateIssued = new moment();
 
-  let { countryCode, currencyCode, vatRateCode } = req.body;
-
+  // Connected ID's
+  let { countryCode, currencyCode, vatRateCode, employeeId } = req.body;
   let response = undefined;
-  countryCode = countryCode ? countryCode : "SI";
-  currencyCode = currencyCode ? currencyCode : "EUR";
+
+  let country;
+  if (countryCode && countryCode !== defaultValuesRegister.country.Code) {
+    // If countryCode is not the same as the default set country
+    // Get country data from minimax
+    response = await apiGet(
+      `${apiBaseUrl}/api/orgs/${orgId}/countries/code(${countryCode})`,
+      authToken
+    );
+    if (response.statusCode !== httpStatusCodes.OK)
+      return res.status(response.statusCode).json(response);
+    country = response.data;
+  } else {
+    // Use the default country set in the defaultValuesRegister
+    country = defaultValuesRegister.country;
+  }
+
+  let currency;
+  if (currency && currencyCode !== defaultValuesRegister.currency.Code) {
+    // If currencyCode is not the same as the default set currency
+    // Get currency data from minimax
+    response = await apiGet(
+      `${apiBaseUrl}/api/orgs/${orgId}/currencies/code(${currencyCode})`,
+      authToken
+    );
+    if (response.statusCode !== httpStatusCodes.OK)
+      return res.status(response.statusCode).json(response);
+    currency = response.data;
+  } else {
+    // Use the default currency set in the defaultValuesRegister
+    currency = defaultValuesRegister.currency;
+  }
+
+  // VatRate is dependant on date of issuing so always refresh object by calling minimax
   vatRateCode = vatRateCode ? vatRateCode : "S";
-  const IssuedInvoiceReportTemplateCode = "IR";
-  const DOReportTemplateCode = "DO";
-
-  // Country data
-  response = await apiGet(
-    `${apiBaseUrl}/api/orgs/${orgId}/countries/code(${countryCode})`,
-    authToken
-  );
-  if (response.statusCode !== httpStatusCodes.OK)
-    return res.status(response.statusCode).json(response);
-  const country = response.data;
-
-  // Currency data
-  response = await apiGet(
-    `${apiBaseUrl}/api/orgs/${orgId}/currencies/code(${currencyCode})`,
-    authToken
-  );
-  if (response.statusCode !== httpStatusCodes.OK)
-    return res.status(response.statusCode).json(response);
-  const currency = response.data;
-
-  // Vatrate data
   response = await apiGet(
     `${apiBaseUrl}/api/orgs/${orgId}/vatrates/code(${vatRateCode})?date=${dateIssued}&countryID=${country.CountryId}`,
     authToken
@@ -497,23 +533,29 @@ const issueInvoiceFromProforma = async (req, res) => {
     return res.status(response.statusCode).json(response);
   const vatRate = response.data;
 
-  // IRReport Template data
-  response = await apiGet(
-    `${apiBaseUrl}/api/orgs/${orgId}/report-templates?SearchString=${IssuedInvoiceReportTemplateCode}&PageSize=100`,
-    authToken
-  );
-  if (response.statusCode !== httpStatusCodes.OK)
-    return res.status(response.statusCode).json(response);
-  const IssuedInvoiceReportTemplate = response.data;
+  // Tukaj se vedno tiska račun na osnovi predračuna
+  let IssuedInvoiceReportTemplate =
+    defaultValuesRegister.issuedInvoiceReportTemplates.IR;
 
-  // DOReport Template data
-  response = await apiGet(
-    `${apiBaseUrl}/api/orgs/${orgId}/report-templates?SearchString=${DOReportTemplateCode}&PageSize=100`,
-    authToken
-  );
-  if (response.statusCode !== httpStatusCodes.OK)
-    return res.status(response.statusCode).json(response);
-  const DOReportTemplate = response.data;
+  // Privzeto nastavljena predloga za dobavnice
+  let DOReportTemplate = defaultValuesRegister.deliveryNoteReportTemplate;
+
+  // Privzeto nastavljeno številčenje dokumentov
+  let documentNumbering = defaultValuesRegister.documentNumbering;
+
+  // Delavci in skladišče
+  let employee = employeeId
+    ? { EmployeeId: employeeId }
+    : defaultValuesRegister.employee;
+  let warehouse = defaultValuesRegister.warehouse;
+
+  if (process.env.NODE_ENV === "DEV") {
+    IssuedInvoiceReportTemplate = {};
+    DOReportTemplate = {};
+    employee = null;
+    warehouse = null;
+    documentNumbering = null;
+  }
 
   // Get customer info by Code
   // No adding new customers or updating customers
@@ -566,9 +608,11 @@ const issueInvoiceFromProforma = async (req, res) => {
       VatRate: {
         ID: vatRate.VatRateId,
       },
-      Warehouse: {
-        ID: 19090,
-      },
+      Warehouse: warehouse
+        ? {
+            ID: warehouse.WarehouseId,
+          }
+        : null,
     };
     IssuedInvoiceRows.push(IssuedInvoiceRow);
   }
@@ -585,11 +629,6 @@ const issueInvoiceFromProforma = async (req, res) => {
             AlreadyPaid: paymentMethodInfo.alreadyPaid ? "D" : "N",
           },
         ]
-      : null;
-
-  const documentNumbering =
-    process.env.NODE_ENV === "PROD"
-      ? documentNumberingsRegister.NZDefault
       : null;
 
   // Generate invoice object
@@ -610,12 +649,21 @@ const issueInvoiceFromProforma = async (req, res) => {
     Currency: {
       ID: currency.CurrencyId,
     },
-    IssuedInvoiceReportTemplate: {
-      ID: IssuedInvoiceReportTemplate.ReportTemplateId,
-    },
-    DeliveryNoteReportTemplate: {
-      ID: DOReportTemplate.ReportTemplateId,
-    },
+    IssuedInvoiceReportTemplate: IssuedInvoiceReportTemplate
+      ? {
+          ID: IssuedInvoiceReportTemplate.ReportTemplateId,
+        }
+      : null,
+    DeliveryNoteReportTemplate: IssuedInvoiceReportTemplate
+      ? {
+          ID: DOReportTemplate.ReportTemplateId,
+        }
+      : null,
+    Employee: employee
+      ? {
+          ID: employee.EmployeeId,
+        }
+      : null,
     PricesOnInvoice: "D", // D => VAT included in price, N => VAT is added to the prices,
     InvoiceType: "R", // R => issued invoice, P => proforma invoice
     IssuedInvoiceRows,
@@ -627,7 +675,6 @@ const issueInvoiceFromProforma = async (req, res) => {
     authToken,
     invoice
   );
-
   if (response.statusCode !== httpStatusCodes.OK) {
     console.log(response);
     return res.status(response.statusCode).json(response);
