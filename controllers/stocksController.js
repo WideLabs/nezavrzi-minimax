@@ -7,24 +7,31 @@ const orgId = process.env.organization_id.toString();
 // @route GET /stocks
 const getStocks = async (req, res) => {
   const { authToken } = req;
+  const pageSize = process.env.stocks_page_size || 100;
   const response = await apiGet(
-    `${apiBaseUrl}/api/orgs/${orgId}/stocks`,
+    `${apiBaseUrl}/api/orgs/${orgId}/stocks?PageSize=${pageSize}`,
     authToken
   );
+
   if (response.statusCode !== httpStatusCodes.OK) {
     return res.status(response.statusCode).json(response);
   }
   // return id, code, quantity
   let items = [];
+
   response.data.Rows.forEach((row) => {
     items.push({
       id: row.Item.ID,
       code: row.ItemCode,
       quantity: row.Quantity,
+      location: row.ItemEANCode,
     });
   });
   return res.status(response.statusCode).json({
     statusCode: httpStatusCodes.OK,
+    page: response.data.CurrentPageNumber,
+    totalResults: response.data.TotalRows,
+    pageSize: response.data.PageSize,
     data: items,
   });
 };
